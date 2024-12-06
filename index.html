@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>დემეს მათემატიკა</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            margin-top: 20px;
+            color: #333;
+        }
+        #grid-container {
+            display: flex;
+            flex-direction: row;
+            margin-top: 10px;
+        }
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(20, 40px);
+            grid-template-rows: repeat(20, 40px);
+            gap: 1px;
+        }
+        .cell {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #ddd;
+            background-color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .cell input {
+            width: 100%;
+            height: 100%;
+            border: none;
+            text-align: center;
+            font-size: 18px;
+            outline: none;
+            background-color: transparent;
+            caret-color: black;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            margin-left: 20px;
+        }
+        .controls button {
+            margin-bottom: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+        }
+        .controls button:hover {
+            background-color: #0056b3;
+        }
+        @media print {
+            body {
+                display: block;
+                margin: 0;
+            }
+            #grid-container {
+                display: block;
+                margin: 0;
+            }
+            #grid {
+                display: grid;
+                grid-template-columns: repeat(30, 40px);
+                grid-template-rows: repeat(30, 40px);
+                gap: 1px;
+            }
+            .controls {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>დემეს მათემატიკა</h1>
+    <div id="grid-container">
+        <div id="grid"></div>
+        <div class="controls">
+            <button id="erase">გასუფთავება</button>
+            <button id="undo">უკან</button>
+            <button id="redo">წინ</button>
+            <button id="print">ამობეჭდვა</button>
+        </div>
+    </div>
+    <script>
+        const grid = document.getElementById("grid");
+        const eraseButton = document.getElementById("erase");
+        const undoButton = document.getElementById("undo");
+        const redoButton = document.getElementById("redo");
+        const printButton = document.getElementById("print");
+        const numRows = 30;
+        const numCols = 30;
+
+        // For tracking history
+        const history = [];
+        let historyIndex = -1;
+
+        // Generate the grid
+        for (let i = 0; i < numRows * numCols; i++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            cell.dataset.index = i;
+
+            const input = document.createElement("input");
+            input.setAttribute("type", "text");
+            input.setAttribute("maxlength", "1"); // Allow only one character per input
+
+            // Auto-move to the next cell after typing (only if the input isn't a dot)
+            input.addEventListener("input", () => {
+                saveState();
+                if (input.value === "*") {
+                    input.value = "×"; // Convert '*' to multiplication symbol
+                }
+            });
+
+            // Backspace/Delete key handling
+            input.addEventListener("keydown", (e) => {
+                const currentIndex = parseInt(cell.dataset.index, 10);
+                if (e.key === "Backspace" || e.key === "Delete") {
+                    saveState();
+                    input.value = ""; // Clear the current cell
+                    if (e.key === "Backspace" && currentIndex > 0) {
+                        grid.children[currentIndex - 1].querySelector("input").focus();
+                    } else if (e.key === "Delete" && currentIndex < numRows * numCols - 1) {
+                        grid.children[currentIndex + 1].querySelector("input").focus();
+                    }
+                }
+                // Handle arrow keys for navigation
+                if (e.key === "ArrowUp" && currentIndex >= numCols) {
+                    grid.children[currentIndex - numCols].querySelector("input").focus();
+                }
+                if (e.key === "ArrowDown" && currentIndex < numRows * numCols - numCols) {
+                    grid.children[currentIndex + numCols].querySelector("input").focus();
+                }
+                if (e.key === "ArrowLeft" && currentIndex > 0) {
+                    grid.children[currentIndex - 1].querySelector("input").focus();
+                }
+                if (e.key === "ArrowRight" && currentIndex < numRows * numCols - 1) {
+                    grid.children[currentIndex + 1].querySelector("input").focus();
+                }
+                // Handle Enter key to move to the next row
+                if (e.key === "Enter") {
+                    const nextRowIndex = currentIndex + numCols;
+                    if (nextRowIndex < numRows * numCols) {
+                        grid.children[nextRowIndex].querySelector("input").focus();
+                    }
+                }
+            });
+
+            // Handle symbol input: if dot, append to the same cell, otherwise move to next cell
+            input.addEventListener("keypress", (e) => {
+                if (e.key === ".") {
+                    e.preventDefault(); // Prevent default dot action (move to next cell)
+                    input.value += "."; // Append the dot in the current cell
+                } else if (e.key !== "." && input.value !== "") {
+                    const currentIndex = parseInt(cell.dataset.index, 10);
+                    // If the next character is not a dot, move to the next cell and start typing
+                    const nextCellIndex = currentIndex + 1;
+                    if (nextCellIndex < numRows * numCols) {
+                        const nextCell = grid.children[nextCellIndex].querySelector("input");
+                        nextCell.focus();
+                        nextCell.value = e.key; // Set the new value in the next cell
+                        e.preventDefault(); // Prevent typing in the current cell after moving to the next
+                    }
+                }
+            });
+
+            // Handle horizontal border click event to make it black
+            cell.addEventListener("mousedown", (e) => {
+                const mouseY = e.clientY;
+                const cellTop = cell.offsetTop;
+                const cellHeight = cell.offsetHeight;
+
+                // Check if the mouse click was on the horizontal border (top or bottom)
+                if (mouseY >= cellTop && mouseY <= cellTop + 5) {
+                    // Mouse clicked on the top border
+                    cell.style.borderTop = "2px solid black";
+                } else if (mouseY >= cellTop + cellHeight - 5 && mouseY <= cellTop + cellHeight) {
+                    // Mouse clicked on the bottom border
+                    cell.style.borderBottom = "2px solid black";
+                }
+            });
+
+            cell.appendChild(input);
+            grid.appendChild(cell);
+        }
+
+        // Clear the grid
+        eraseButton.addEventListener("click", () => {
+            saveState();
+            document.querySelectorAll(".cell").forEach(cell => {
+                cell.className = "cell";
+                cell.querySelector("input").value = "";
+            });
+        });
+
+        // Undo functionality
+        undoButton.addEventListener("click", () => {
+            if (historyIndex <= 0) return;
+            historyIndex--;
+            loadState(history[historyIndex]);
+        });
+
+        // Redo functionality
+        redoButton.addEventListener("click", () => {
+            if (historyIndex >= history.length - 1) return;
+            historyIndex++;
+            loadState(history[historyIndex]);
+        });
+
+        // Save current state to history
+        function saveState() {
+            const currentState = [];
+            document.querySelectorAll(".cell").forEach(cell => {
+                currentState.push(cell.querySelector("input").value);
+            });
+
+            history.push(currentState);
+            historyIndex++;
+        }
+
+        // Load a state from history
+        function loadState(state) {
+            document.querySelectorAll(".cell").forEach((cell, index) => {
+                cell.querySelector("input").value = state[index];
+            });
+        }
+
+        // Print functionality
+        printButton.addEventListener("click", () => {
+            window.print();
+        });
+    </script>
+</body>
+</html>
