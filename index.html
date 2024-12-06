@@ -156,10 +156,8 @@
                     grid.children[currentIndex + 1].querySelector("input").focus();
                 }
                 // Handle Enter key to move to the next row
-                if (e.key === "Enter") {
-                    const nextRowIndex = currentIndex + numCols;
-                    if (nextRowIndex < numRows * numCols) {
-                        grid.children[nextRowIndex].querySelector("input").focus();
+                if (e.key === "ArrowDown" && currentIndex < numRows * numCols - numCols) {
+                    grid.children[currentIndex + numCols].querySelector("input").focus();
                     }
                 }
             });
